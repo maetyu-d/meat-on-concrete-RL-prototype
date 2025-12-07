@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MEAT ON CONCRETE — Full Build (Expanded UI + Tiles Mode)</title>
+<style>
+:root { --bg:#0b0b0b; --fg:#e6e6e6; --dim:#8a8a8a; --mono:ui-monospace,Menlo,Monaco,Consolas,"Courier New",monospace; }
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:var(--mono)}
+/* Doubled header/footer height */
+.frame{position:relative;height:100vh;display:grid;grid-template-rows:8ch 1fr 20ch;border-left:4px solid var(--fg);border-right:4px solid var(--fg)}
+.frame::before{content:"";position:absolute;top:0;bottom:0;left:4px;right:4px;border-left:1px solid var(--fg);border-right:1px solid var(--fg);pointer-events:none}
+header{border-top:2px solid var(--fg);border-bottom:2px solid var(--fg);padding:1ch 1ch;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;font-weight:700;font-size:1.05rem;line-height:1.35}
+header.map-legend,header.mode-label{color:var(--dim);border-bottom:2px solid var(--fg);font-weight:600;letter-spacing:.5px;font-size:1rem;display:flex;justify-content:space-between;text-transform:uppercase;margin:0 1ch;padding:1ch 0}
+main{display:grid;grid-template-columns:var(--col1,66.666%) var(--col2,16.666%) var(--col3,16.666%);position:relative}
+.world-wrap{border-right:2px solid var(--fg);display:flex;align-items:center;justify-content:center;background:#111}
+.world{white-space:pre;line-height:1;background:#000;border:6px solid var(--fg);box-shadow:inset 0 0 0 1px #444;max-width:calc(100% - 2ch);max-height:calc(100% - 2ch);padding:1ch;overflow:hidden}
+.profile{display:flex;flex-direction:column;background:#0e0e0e;border-right:2px solid var(--fg)}
+.profile header{border:none;border-bottom:2px solid var(--fg);padding:1ch 1ch;font-size:1.05rem}
+.profile pre{white-space:pre;line-height:1.1;margin:0 1ch;padding:1ch 0;border-top:2px solid var(--fg);font-size:1rem}
+.sidebar{display:grid;grid-template-rows:repeat(4,1fr);background:#0f0f0f}
+.blk{border-bottom:2px solid var(--fg);margin:0 1ch;padding:1ch 0;font-size:1remmin-height:0;overflow:auto;}
+.blk h2{margin:0 0 .5ch 1ch;border-bottom:1px solid var(--fg);padding-bottom:.3ch;font-size:1.1rem}
+.blk h2{position:sticky;top:0;background:#0f0f0f;z-index:1;padding-top:.25ch;padding-bottom:.25ch}
+footer{display:grid;grid-template-rows:auto 1fr;border-top:2px solid var(--fg)}
+.cmd{border-bottom:1px solid var(--fg);padding:1ch 1ch;font-size:1rem;line-height:1.4}
+.log{overflow-y:auto;user-select:none;font-size:1rem;line-height:1.4;opacity:.95;color:var(--fg);border-top:1px solid var(--fg);margin:0 1ch;padding-top:1ch;max-height:20ch;scrollbar-color:#666 #222;}
+.log div.zone,.log div.biome{margin-left:1ch}
+.world.overlay-mode{position:relative;background:#000;color:var(--dim)}
+.world.overlay-mode::before{content:"";position:absolute;top:1px;bottom:1px;left:1px;right:1px;border:1px solid var(--fg);opacity:1;pointer-events:none}
+.world.map-mode{position:relative;background:#000;color:var(--dim)}
+.world.map-mode::before{content:"";position:absolute;top:1px;bottom:1px;left:1px;right:1px;border:1px solid var(--fg);opacity:1;pointer-events:none}
+.kbd{background:#000;border:1px solid var(--fg);padding:2px 6px;margin-right:4px;font-size:1rem}
+.dim{color:var(--dim)}
+/* ===== Tiles mode visuals ===== */
+.tile { display:inline-block; width:1ch; }
+.t-empty{ color:#222 }
+.t-wall{ color:#a5a5a5 }
+.t-soil{ color:#6f6f6f }
+.t-fluid{ color:#5dc1c1 }
+.t-tunnel{ color:#8a8a8a }
+.t-wood{ color:#b68a5a }
+.t-corpse{ color:#b35f5f }
+.t-organ{ color:#d08a8a }
+.t-loot{ color:#d7c56b }
+.t-player{ color:#ffffff; font-weight:700 }
+.t-enemy{ color:#eab676 }
+.t-enemy-psychic{ color:#a0a0ff }
+.t-enemy-acid{ color:#7ce087 }
+.t-enemy-crush{ color:#e0a07c }
+.t-noise{ color:#999 }
+
+.gutter{position:absolute;top:0;bottom:0;width:8px;cursor:col-resize;z-index:5;opacity:.5;transition:opacity .15s ease;background:linear-gradient(to bottom, rgba(230,230,230,.25), rgba(230,230,230,.05));border-left:1px solid var(--fg);border-right:1px solid var(--fg)}
+.gutter:hover,.gutter:focus{opacity:.9}
+.gutter.dragging{opacity:1;background:linear-gradient(to bottom, rgba(230,230,230,.45), rgba(230,230,230,.15))}
+@media (max-width: 900px){ .gutter{width:6px} }
+    </style>
+
+</head>
+<body>
+<div class="frame">
+<header>
+  <div>MEAT ON CONCRETE / DEPTH: <span id="depth">0</span>m / ZONE: <span id="zone">Surface</span> (BIOME <span id="biome">I</span>)</div>
+  <div class="dim">@: you | ♥ organ | ☠ corpse | █ concrete | ░ soil | ≈ fabric | ⊠ metal | ▥ wood | k crawler | H howler | s stalker | S spitter | B bulwark | m swarm | W warden | ¤ loot | ? noise</div>
+</header>
+<main>
+  <section class="world-wrap"><pre id="world" class="world" tabindex="0"></pre></section>
+  <aside class="profile">
+    <header>STRATA PROFILE</header>
+    <pre id="sideview"></pre>
+  </aside>
+  <aside class="sidebar">
+    <section class="blk" id="stats"><h2>Vitals</h2></section>
+    <section class="blk" id="body"><h2>Body</h2></section>
+    <section class="blk" id="weapons"><h2>Weapons</h2></section>
+<section class="blk" id="tools"><h2>Equipment</h2></section>
+  </aside>
+  <div class="gutter" id="g1" role="separator" aria-label="Resize world and strata" tabindex="0"></div>
+  <div class="gutter" id="g2" role="separator" aria-label="Resize strata and vitals" tabindex="0"></div>
+</main>
+<footer>
+  <div class="cmd"><span class="kbd">↑↓←→</span>move <span class="kbd">f</span>strike <span class="kbd">t</span>throw <span class="kbd">y</span>cycle throwable <span class="kbd">p</span>pad/bandage <span class="kbd">o</span>craft <span class="kbd">;</span>tiles <span class="kbd">d</span>dig <span class="kbd">u</span>ascend <span class="kbd">x</span>examine <span class="kbd">g</span>gather/loot <span class="kbd">b</span>build <span class="kbd">r</span>repair <span class="kbd">i</span>inventory <span class="kbd">m</span>map <span class="kbd">q</span>rest <span class="kbd">c</span>crouch <span class="kbd">F5</span>save <span class="kbd">F9</span>load</div>
+  <div id="log" class="log">You stand beneath a humming concrete sky.</div>
+</footer>
+</div>
+<script>
+/* ================= CORE STATE ================= */
+const elWorld = document.getElementById('world');
+const elDepth = document.getElementById('depth');
+const elZone  = document.getElementById('zone');
+const elBiome = document.getElementById('biome');
+const elStats = document.getElementById('stats');
+const elBody  = document.getElementById('body');
+const elWeapons = document.getElementById('weapons');
+const elTools = document.getElementById('tools');
+const elLog   = document.getElementById('log');
+const elSide  = document.getElementById('sideview');
+const elMain  = document.querySelector('main');
+const g1 = document.getElementById('g1');
+const g2 = document.getElementById('g2');
+
+// Resizable columns: world | strata | vitals
+(function initResizableColumns(){
+  if(!elMain || !g1 || !g2) return;
+  let widths = [66.666, 16.666, 16.666];
+  try{
+    const saved = JSON.parse(localStorage.getItem('cm_col_widths'));
+    if(Array.isArray(saved) && saved.length===3 && saved.every(n=> typeof n==='number')) widths = saved;
+  }catch(e){}
+
+  function applyWidths(){
+    elMain.style.setProperty('--col1', widths[0] + '%');
+    elMain.style.setProperty('--col2', widths[1] + '%');
+    elMain.style.setProperty('--col3', widths[2] + '%');
+    positionGutters();
+  }
+
+  function positionGutters(){
+    const rect = elMain.getBoundingClientRect();
+    const x1 = rect.width * (widths[0]/100);
+    const x2 = rect.width * ((widths[0]+widths[1])/100);
+    g1.style.left = (x1 - g1.offsetWidth/2) + 'px';
+    g2.style.left = (x2 - g2.offsetWidth/2) + 'px';
+  }
+
+  function clamp(val, min, max){ return Math.max(min, Math.min(max, val)); }
+
+  let dragging = null; // 'g1' or 'g2'
+  let startX = 0;
+  let startW = widths.slice();
+
+  function startDrag(which, ev){
+    dragging = which;
+    startX = ev.clientX || (ev.touches && ev.touches[0].clientX) || 0;
+    startW = widths.slice();
+    (which==='g1'?g1:g2).classList.add('dragging');
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', endDrag);
+    document.addEventListener('touchmove', onMove, {passive:false});
+    document.addEventListener('touchend', endDrag);
+    ev.preventDefault();
+  }
+
+  function onMove(ev){
+    if(!dragging) return;
+    const clientX = ev.clientX || (ev.touches && ev.touches[0].clientX) || 0;
+    const rect = elMain.getBoundingClientRect();
+    const dxPx = clientX - startX;
+    const dxPct = (dxPx / rect.width) * 100;
+    const minCol = 10; // minimum width for any column in %
+
+    if(dragging==='g1'){
+      let w1 = clamp(startW[0] + dxPct, minCol, 100 - minCol - minCol);
+      let w2 = clamp(startW[1] + (startW[0]-w1), minCol, 100 - w1 - minCol);
+      let w3 = 100 - w1 - w2;
+      if(w3 < minCol){ w3 = minCol; w2 = 100 - w1 - w3; }
+      widths = [w1, w2, w3];
+    } else if(dragging==='g2'){
+      let w23 = startW[1] + startW[2];
+      let newW2 = clamp(startW[1] + dxPct, minCol, w23 - minCol);
+      let newW3 = w23 - newW2;
+      widths = [startW[0], newW2, newW3];
+    }
+    applyWidths();
+    ev.preventDefault();
+  }
+
+  function endDrag(){
+    if(!dragging) return;
+    g1.classList.remove('dragging');
+    g2.classList.remove('dragging');
+    dragging = null;
+    try{ localStorage.setItem('cm_col_widths', JSON.stringify(widths)); }catch(e){}
+  }
+
+  g1.addEventListener('mousedown', ev => startDrag('g1', ev));
+  g2.addEventListener('mousedown', ev => startDrag('g2', ev));
+  g1.addEventListener('touchstart', ev => startDrag('g1', ev), {passive:false});
+  g2.addEventListener('touchstart', ev => startDrag('g2', ev), {passive:false});
+
+  // Keyboard accessibility: focus the separator and use arrows to resize
+  function keyResize(which, dir){ // dir = -1 (left) or 1 (right)
+    const step = 1; // percent
+    if(which==='g1'){
+      widths[0] = clamp(widths[0] + dir*step, 10, 80);
+      widths[1] = clamp(widths[1] - dir*step, 10, 90 - widths[0]);
+      widths[2] = 100 - widths[0] - widths[1];
+    } else {
+      const sum = widths[1]+widths[2];
+      widths[1] = clamp(widths[1] + dir*step, 10, sum-10);
+      widths[2] = sum - widths[1];
+    }
+    applyWidths();
+    try{ localStorage.setItem('cm_col_widths', JSON.stringify(widths)); }catch(e){}
+  }
+  g1.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft'){ keyResize('g1', -1); } if(e.key==='ArrowRight'){ keyResize('g1', 1); } if(e.key==='Enter'){ widths=[66.666,16.666,16.666]; applyWidths(); } });
+  g2.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft'){ keyResize('g2', -1); } if(e.key==='ArrowRight'){ keyResize('g2', 1); } if(e.key==='Enter'){ widths=[66.666,16.666,16.666]; applyWidths(); } });
+
+  window.addEventListener('resize', positionGutters);
+  applyWidths();
+})();
+
+const VIEW_W=110, VIEW_H=34;
+const tiles = { wall:'█', soil:'░', soil2:'▒', soil3:'▓', fluid:'≈', empty:' ', corpse:'☠', organ:'♥', player:'@', tunnel:'▒', cover:'▧', shelter5:'▣', bed:'╬', woodFrag:'▥' };
+const beamGlyphs = ['║','╫','╬'];
+
+let player = {
+  x:0, y:0, depth:0,
+  innate: 0.10 + Math.random()*0.10,
+  stats:{ hp:96, blood:88, o2:94, inf:7, mind:86, fatigue:10 },
+  senses:{ blind:false, deaf:false, sight:1.0, hearing:1.0, crouch:false },
+  body:{ extra:{ arms:0, legs:0, lungs:0, kidneys:0, hearts:0, eyes:0 }, arms:{L:true,R:true}, legs:{L:true,R:true} },
+  tools:['scalpel','pump','clamp'],
+  resources:{ concrete:0, metal:0, fabric:0, organic:0, wood:0 },
+  biome:'I'
+};
+
+// Defense & Status & Gear
+player.def = { padding: 0.0, dodge: 0.05 }; // padding from fabric; items add on top
+player.status = { bleeding: 0 };
+player.gear = { head:null, torso:null };
+player.inv = { dart:0, flare:0 };
+player.throwSel = 'shard';
+let throwMode=false;
+let equipMode=false;
+let equipIndex=0;
+let tileMode=false; // NEW: tiles rendering toggle
+
+/* Weapons */
+const WEAPONS = {
+  fist:{name:'fist', dmg:[1,3], crit:0.05, noise:3, acc:0.75},
+  shiv:{name:'shiv', dmg:[2,5], crit:0.10, noise:3, acc:0.80},
+  rebar:{name:'rebar',dmg:[3,7], crit:0.12, noise:5, acc:0.70},
+  pipe:{name:'pipe', dmg:[4,8], crit:0.15, noise:6, acc:0.68}
+};
+// === Procedural weapon system ===
+let PROC_WPN_SEQ = 0;
+function newProcWeaponId(){ return 'proc_'+(PROC_WPN_SEQ++); }
+function generateProcWeapon(){
+  const prefixes=['rusted','bone','glass','forged','spined','molten'];
+  const types=['spike','scalpel','rod','maul','shiv','bar','blade'];
+  const suffixes=['of decay','of silence','of rot','of pain','of heat','of corrosion'];
+  const effects=['bleed','burn','shock','corrode','poison'];
+  const p=prefixes[Math.floor(Math.random()*prefixes.length)];
+  const t=types[Math.floor(Math.random()*types.length)];
+  const s=Math.random()<0.4?(' '+suffixes[Math.floor(Math.random()*suffixes.length)]):'';
+  const name=`${p} ${t}${s}`;
+  const base=1+Math.floor(Math.random()*7);
+  const spread = Math.max(1, Math.floor(base/2));
+  const dmg=[Math.max(1, base-spread), base+spread];
+  const crit=0.05 + Math.random()*0.12;
+  const noise=3 + Math.floor(Math.random()*4);
+  const acc=0.65 + Math.random()*0.2;
+  const effect = Math.random()<0.25?effects[Math.floor(Math.random()*effects.length)]:null;
+  return {name, dmg, crit, noise, acc, effect};
+}
+// Spawn a loot pile with a procedural weapon at (x,y,z) if space is open
+function spawnProcWeaponAt(x,y,z){
+  const id=newProcWeaponId();
+  const def=generateProcWeapon();
+  const k=key(x,y,z);
+  const t=getTile(x,y,z);
+  if(solidAt(t)) return false;
+  memory.set(k, {tile:'¤', loot:[{type:'weapon', id, def}]});
+  return true;
+}
+// Occasionally sprinkle a weapon near the player
+function spawnWorldWeaponOccasionally(){
+  if(Math.random()<0.015) return; // most ticks: do nothing
+  if(Math.random()<0.006){
+    const r = 16 + Math.floor(Math.random()*18);
+    const a = Math.random()*Math.PI*2;
+    const x = player.x + Math.round(Math.cos(a)*r);
+    const y = player.y + Math.round(Math.sin(a)*r);
+    spawnProcWeaponAt(x,y,player.depth);
+  }
+}
+
+(() => { const id=newProcWeaponId(); WEAPONS[id]=generateProcWeapon(); player.weapons=[id]; })();
+player.wi=0;
+function currentWeapon(){ return WEAPONS[player.weapons[player.wi]]; }
+function equipWeaponByIndex(idx){ if(idx<0||idx>=player.weapons.length) return; player.wi=idx; const w=WEAPONS[player.weapons[idx]]; log(`Equipped ${w.name||player.weapons[idx]}`); drawHUD(); }
+
+/* Gear Catalog */
+const ITEMS = {
+  rebarHelm:{name:'Rebar Helm', slot:'head', armor:0.10, dodge:0.00, resist:{crush:0.10}},
+  resinCoat:{name:'Resin Coat', slot:'torso', armor:0.15, dodge:0.00, resist:{acid:0.25}},
+  bonePlating:{name:'Bone Plating', slot:'torso', armor:0.10, dodge:0.03, resist:{psychic:0.10}},
+};
+function totalArmor(){ const ih = player.gear.head?ITEMS[player.gear.head].armor:0; const it = player.gear.torso?ITEMS[player.gear.torso].armor:0; return Math.min(0.60, player.def.padding + ih + it); }
+function totalDodge(){ const ih = player.gear.head?ITEMS[player.gear.head].dodge:0; const it = player.gear.torso?ITEMS[player.gear.torso].dodge:0; return Math.min(0.35, player.def.dodge + ih + it + (player.senses.crouch?0.10:0)); }
+function resistFor(type){ let r=0; for(const slot of ['head','torso']){ const id=player.gear[slot]; if(id && ITEMS[id].resist && ITEMS[id].resist[type]) r+=ITEMS[id].resist[type]; } return Math.min(0.5,r); }
+
+const memory = new Map();
+const revealed = new Set();
+let uiMode = 'world';
+let mapOpen=false, inventoryOpen=false, surgeryOpen=false, buildOpen=false, craftOpen=false;
+
+const noiseSeed = Math.random()*10000;
+function rnd(n){ return Math.sin(n*43758.5453 + noiseSeed) % 1; }
+function vnoise(x,y,z){ const nx=Math.floor(x*0.12), ny=Math.floor(y*0.12), nz=Math.floor(z*0.18); return (rnd(nx*12.9898+ny*78.233+nz*37.719)+1)/2; }
+
+/* ================= TERRAIN GEN ================= */
+function key(x,y,z){ return `${x},${y},${z}`; }
+function setTile(x,y,z,val){ memory.set(key(x,y,z),val); }
+function getTile(x,y,z){ const k=key(x,y,z); return memory.has(k)? memory.get(k) : terrainTile(x,y,z); }
+
+function terrainTile(x,y,z){
+  const n = vnoise(x,y,z); const bias = Math.min(0.45, z*0.003);
+  const t = n + bias;
+  if (z>15 && t>0.56 && t<0.62 && Math.random()<0.015) return beamGlyphs[Math.floor(Math.random()*beamGlyphs.length)];
+  if (z>20 && t<0.58 && Math.random()<0.03) return tiles.woodFrag;
+  if (t<0.06) return tiles.wall;
+  if (t<0.12) return tiles.fluid;
+  if (t<0.48) return tiles.soil;
+  if (t<0.51) return tiles.corpse;
+  if (t<0.54) return tiles.organ;
+  if (t<0.565 && Math.random()<0.02) return {tile:'⊠', ruin:true};
+  return tiles.empty;
+}
+
+/* ================= ZONES & BIOMES ================= */
+function getZoneName(d){ if(d<10) return 'Surface'; if(d<30) return 'Sub-Concrete'; if(d<60) return 'Ossuary'; if(d<120) return 'Reservoir'; return 'Vault'; }
+function getBiomeRoman(x,y,z){ const regionSize = 200; const rx = Math.floor(x / regionSize); const ry = Math.floor(y / regionSize); const r = Math.abs(rnd(rx*31.4 + ry*47.2 + 137.9)); const idx = Math.floor(r * 5) % 5; return ['I','II','III','IV','V'][idx]; }
+let lastZone='', lastBiome='';
+function onDepthChange(prevD, newD){ const prevZ=getZoneName(prevD), newZ=getZoneName(newD); if(prevZ!==newZ){ const lines={ 'Surface':'Dust. Static hum.', 'Sub-Concrete':'Condensation on rebar.', 'Ossuary':'Hollow air. Bone underfoot.', 'Reservoir':'Pipes pulse. Fluid echoes.', 'Vault':'Warm fog. Breathing walls.' }; log(` ${'[ZONE]'} ${newZ}. ${lines[newZ]||''}`,'zone'); } }
+function onBiomeChange(prevB, newB){ if(prevB!==newB){ const lines={ 'I':'Ash plains, quiet and sterile.', 'II':'Fragments of bone glint in dust.', 'III':'Residues pulse faintly, half-alive.', 'IV':'Fluids circulate through fractured channels.', 'V':'Organic concrete breathes in the dark.' }; log(` ${'[BIOME]'} ${newB}. ${lines[newB]||''}`,'biome'); } }
+
+/* ================= LOG ================= */
+function log(msg, cls){
+  const d=document.createElement('div');
+  d.textContent=msg;
+  if(cls)d.className=cls;
+  elLog.appendChild(d);
+  while(elLog.children.length>80) elLog.removeChild(elLog.firstChild);
+  elLog.scrollTop = elLog.scrollHeight;
+}
+
+/* ================= ENEMIES ================= */
+const ENEMY_GLYPHS = { crawler:'k', howler:'H', stalker:'s', spitter:'S', bulwark:'B', swarm:'m', warden:'W' };
+let enemies = [];
+function isEnemyAt(x,y,z){ return enemies.find(e=>e.x===x&&e.y===y&&e.z===z); }
+function enemyBase(kind){
+  switch(kind){
+    case 'crawler': return {hp:14, dmg:4, type:'crush', sight:9,  hearing:14, speed:1, loot:[['organic',0.6],['metal',0.3]]};
+    case 'howler':  return {hp:10, dmg:2, type:'psychic', sight:14, hearing:22, speed:1, loot:[['fabric',0.4],['organic',0.4]]};
+    case 'stalker': return {hp:12, dmg:5, type:'crush', sight:18, hearing:8,  speed:1, loot:[['metal',0.4],['organic',0.3]]};
+    case 'spitter': return {hp:10, dmg:3, type:'acid', sight:16, hearing:12, speed:1, loot:[['fabric',0.5],['metal',0.2]]};
+    case 'bulwark': return {hp:24, dmg:6, type:'crush', sight:8,  hearing:10, speed:1, loot:[['concrete',0.6],['metal',0.5]]};
+    case 'swarm':   return {hp:6,  dmg:2, type:'crush', sight:6,  hearing:16, speed:1, loot:[['organic',0.5]]};
+    case 'warden':  return {hp:18, dmg:3, type:'psychic', sight:18, hearing:24, speed:1, loot:[['fabric',0.6],['organic',0.5]]};
+  }
+}
+function spawnEnemyNearPlayer(){
+  const depth=player.depth;
+  const chance = Math.min(0.2, 0.02 + depth*0.001);
+  if(Math.random()>chance) return;
+  const pool = depth<15? ['crawler','howler','swarm'] : depth<40? ['crawler','howler','stalker','swarm','spitter'] : depth<90? ['crawler','howler','stalker','spitter','bulwark','swarm'] : ['stalker','spitter','bulwark','warden','swarm'];
+  const kind = pool[Math.floor(Math.random()*pool.length)];
+  const radius = 18 + Math.floor(Math.random()*10);
+  const angle = Math.random()*Math.PI*2;
+  const ex = player.x + Math.round(Math.cos(angle)*radius);
+  const ey = player.y + Math.round(Math.sin(angle)*radius);
+  const ez = player.depth;
+  const t = getTile(ex,ey,ez);
+  if(solidAt(t)) return;
+  const base = enemyBase(kind);
+  enemies.push({kind, x:ex, y:ey, z:ez, hp:base.hp, dmg:base.dmg, type:base.type, sight:base.sight, hearing:base.hearing, speed:base.speed, state:'idle', target:null, lastNoise:0, cooldown:0, stun:0});
+  log('[A sensation] Something moves in the strata.');
+}
+function distance(ax,ay,bx,by){ const dx=ax-bx, dy=ay-by; return Math.sqrt(dx*dx+dy*dy); }
+function isOpaque(t){ if(typeof t==='object') t=t.tile; return [tiles.wall, tiles.soil, tiles.soil2, tiles.soil3, tiles.fluid].includes(t) || beamGlyphs.includes(t); }
+function hasLineOfSight(x0,y0,x1,y1,z){ let dx=Math.abs(x1-x0), dy=Math.abs(y1-y0); let sx = x0<x1?1:-1; let sy = y0<y1?1:-1; let err = dx-dy; let x=x0, y=y0; while(!(x===x1 && y===y1)) { if(!(x===x0 && y===y0)){ if(isOpaque(getTile(x,y,z))) return false; } const e2=2*err; if(e2> -dy){ err-=dy; x+=sx; } if(e2< dx){ err+=dx; y+=sy; } } return true; }
+function stepTowards(e, tx, ty){ const dx=Math.sign(tx-e.x), dy=Math.sign(ty-e.y); const tryOrder = Math.random()<0.5? [[dx,0],[0,dy]] : [[0,dy],[dx,0]]; for(const [sx,sy] of tryOrder){ const nx=e.x+sx, ny=e.y+sy; if(!solidAt(getTile(nx,ny,e.z)) && !isEnemyAt(nx,ny,e.z)) { e.x=nx; e.y=ny; return; } }
+}
+function enemyRangedAttack(e){ if(e.kind!=='spitter') return; if(e.cooldown>0){ e.cooldown--; return; } if(!hasLineOfSight(e.x,e.y,player.x,player.y,e.z)) return; if(distance(e.x,e.y,player.x,player.y)>8) return; e.cooldown = 3 + Math.floor(Math.random()*3); emitNoiseAt(e.x,e.y,e.z,12,'a wet hiss'); const hitChance = player.senses.crouch?0.45:0.7; if(Math.random()<hitChance){ applyIncomingAttack(e.dmg+2,'acid'); log('Acid spatters your skin. It burns.'); if(Math.random()<0.2){ player.senses.blind=true; player.senses.sight=0.4; log('[Injury] Vision blurs with pain.'); } } }
+function enemyScream(e){ const p = (e.kind==='warden')?20:16; if(Math.random() < (e.kind==='warden'?0.12:0.08)) emitNoiseAt(e.x,e.y,e.z,p, e.kind==='warden'?'a commanding ululation':'a distant keening'); if(e.kind==='warden' && Math.random()<0.08 && distance(e.x,e.y,player.x,player.y)<=10){ applyIncomingAttack(2,'psychic'); log('[Psychic] Your will wavers.'); } }
+function enemyAct(e){
+  if(e.stun>0){ e.stun--; return; }
+  const seesPlayer = distance(e.x,e.y,player.x,player.y) <= e.sight && hasLineOfSight(e.x,e.y,player.x,player.y,e.z) && !player.senses.crouch;
+  if(seesPlayer){ e.state='chase'; e.target={x:player.x,y:player.y}; }
+  else if(e.lastNoise>0){ e.state='investigate'; }
+  else if(e.state!=='idle'){ e.state='idle'; e.target=null; }
+  if(e.state==='chase' && e.target){ stepTowards(e, e.target.x, e.target.y); }
+  else if(e.state==='investigate' && e.target){ if(distance(e.x,e.y,e.target.x,e.target.y)>0){ stepTowards(e, e.target.x, e.target.y); } else { e.state='idle'; e.lastNoise=0; }}
+  if(e.kind==='spitter'){ enemyRangedAttack(e); }
+  if(e.kind==='howler' || e.kind==='warden'){ enemyScream(e); }
+  if(Math.abs(e.x-player.x)<=1 && Math.abs(e.y-player.y)<=1 && e.z===player.depth){ applyIncomingAttack(e.dmg, e.type||'crush'); }
+}
+
+/* ============== DAMAGE, STATUS, THROWABLES ============== */
+function applyIncomingAttack(raw, type){
+  const dodge = totalDodge() - (player.senses.blind?0.05:0);
+  if(Math.random()<Math.max(0, dodge)){ log('[Dodge] You slip past the blow.'); emitNoiseFromPlayer(2); return; }
+  const resist = resistFor(type||'') || 0;
+  const armor = totalArmor();
+  const mitig = Math.round(raw * (1 - Math.min(0.8, armor + resist)));
+  player.stats.hp = Math.max(0, player.stats.hp - Math.max(0,mitig));
+  const bleedChance = Math.min(0.4, 0.1 + (raw-mitig)*0.03);
+  if(type==='crush' && Math.random()<bleedChance){ player.status.bleeding = Math.min(3, player.status.bleeding + 1); log('[Status] You are bleeding.'); }
+  if(type==='psychic'){ player.stats.mind = Math.max(0, player.stats.mind - 1); }
+}
+function bleedTick(){ if(player.status.bleeding<=0) return; const b=player.status.bleeding; player.stats.blood = Math.max(0, player.stats.blood - (1.5*b)); player.stats.hp = Math.max(0, player.stats.hp - b); if(Math.random()<0.12){ log('[Status] Blood loss darkens the edges.'); } }
+function padOrBandage(){ if(player.status.bleeding>0){ if(player.resources.fabric<=0){ log('No fabric (≈) to bandage.'); return; } player.resources.fabric -= 1; player.status.bleeding = Math.max(0, player.status.bleeding-2); log('[Bandage] You bind the wound. Bleeding subsides.'); drawHUD(); afterPlayerAction(1); return; } if(player.resources.fabric<2){ log('Need 2× ≈ to pad armor.'); return; } if(player.def.padding>=0.30){ log('Padding can’t be improved further.'); return; } player.resources.fabric -= 2; player.def.padding = Math.min(0.30, player.def.padding + 0.10); log(`[Armor] Padding fitted. Base armor now ${Math.round(player.def.padding*100)}%.`); drawHUD(); afterPlayerAction(2); }
+
+function startThrowMode(){
+  if(player.throwSel==='shard' && player.resources.metal<=0){ log('No ⊠ to throw.'); return; }
+  if(player.throwSel==='dart'  && player.inv.dart<=0){ log('No bone darts. Craft or loot some.'); return; }
+  if(player.throwSel==='flare' && player.inv.flare<=0){ log('No flares. Craft or loot some.'); return; }
+  throwMode=true; log(`Throw mode: ${player.throwSel}. Arrow keys to aim. (y to cycle, t to cancel)`);
+}
+function throwCurrent(dir){
+  throwMode=false; let range=6; let dx=0,dy=0; if(dir==='up')dy=-1; else if(dir==='down')dy=1; else if(dir==='left')dx=-1; else if(dir==='right')dx=1; let x=player.x,y=player.y; let hit=false; const impact=[];
+  if(player.throwSel==='shard'){ player.resources.metal -= 1; }
+  if(player.throwSel==='dart'){ player.inv.dart -= 1; }
+  if(player.throwSel==='flare'){ player.inv.flare -= 1; }
+  for(let i=0;i<range;i++){
+    x+=dx; y+=dy; const t=getTile(x,y,player.depth); if(solidAt(t)) break; const en=isEnemyAt(x,y,player.depth); if(en){
+      if(player.throwSel==='shard'){ const dmg=4+Math.floor(Math.random()*4); en.hp-=dmg; log(`[Throw] Shard hits ${ENEMY_GLYPHS[en.kind]} for ${dmg}.`); emitNoiseAt(x,y,player.depth,6,'metal clatter'); }
+      if(player.throwSel==='dart'){ const dmg=5+Math.floor(Math.random()*4); en.hp-=dmg; log(`[Throw] Bone dart sinks into ${ENEMY_GLYPHS[en.kind]} for ${dmg}.`); emitNoiseAt(x,y,player.depth,3,'a dry snap'); }
+      if(player.throwSel==='flare'){ const r=2; for(const e of enemies){ if(e.z!==player.depth) continue; if(distance(e.x,e.y,x,y)<=r){ e.stun = Math.max(e.stun, 2); } } log('[Throw] Flare blooms. Forms stall in the light.'); emitNoiseAt(x,y,player.depth,12,'a sharp crack and sizzle'); }
+      hit=true; break;
+    }
+    impact.push([x,y]);
+  }
+  if(!hit){ if(player.throwSel==='flare'){ const [ix,iy]=impact.length?impact[impact.length-1]:[x,y]; const r=2; for(const e of enemies){ if(e.z!==player.depth) continue; if(distance(e.x,e.y,ix,iy)<=r){ e.stun = Math.max(e.stun, 2); } } log('[Throw] Flare blooms in the dark.'); emitNoiseAt(ix,iy,player.depth,12,'a sharp crack and sizzle'); } else { log('[Throw] It vanishes into the dark.'); emitNoiseFromPlayer(4); } }
+  for(const e of enemies){ enemyAct(e); if(e.lastNoise>0) e.lastNoise--; }
+  enemies = enemies.filter(e=> e.hp>0);
+  renderWorld(); drawHUD();
+}
+function cycleThrowable(){ player.throwSel = (player.throwSel==='shard')?'dart':(player.throwSel==='dart')?'flare':'shard'; log(`[Equip] Throwable: ${player.throwSel}`); drawHUD(); }
+
+/* ================= PLAYER ATTACK ================= */
+function roll(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+function cycleWeapon(){ if(player.weapons.length<=1){ log('No other weapons.'); return; } player.wi=(player.wi+1)%player.weapons.length; log(`[Equip] ${currentWeapon().name} ready.`); drawHUD(); }
+function playerAttack(){ const adj = enemies.filter(e=> e.z===player.depth && Math.abs(e.x-player.x)<=1 && Math.abs(e.y-player.y)<=1); if(adj.length===0){ log('Your swing meets air.'); afterPlayerAction(2); return; } const target = adj.sort((a,b)=>a.hp-b.hp)[0]; const w=currentWeapon(); let acc=w.acc; if(player.senses.crouch) acc+=0.1; if(player.senses.blind) acc-=0.35; if(Math.random()<acc){ let dmg=roll(w.dmg[0],w.dmg[1]); if(Math.random()<w.crit) dmg=Math.round(dmg*1.8); if(target.kind==='bulwark') dmg=Math.max(1, Math.floor(dmg*0.7)); target.hp -= dmg; log(`[Hit] ${w.name} → ${ENEMY_GLYPHS[target.kind]} for ${dmg}. (${Math.max(0,target.hp)} hp)`); } else { log('[Miss] The impact skitters off concrete.'); } player.stats.fatigue = Math.min(100, player.stats.fatigue + 0.6); player.stats.o2 = Math.max(0, player.stats.o2 - 0.1); emitNoiseFromPlayer(w.noise); resolveEnemyDeaths(); for(const e of enemies){ enemyAct(e); if(e.lastNoise>0) e.lastNoise--; } resolveEnemyDeaths(); renderWorld(); drawHUD(); }
+function resolveEnemyDeaths(){ const survivors=[]; for(const e of enemies){ if(e.hp>0){ survivors.push(e); continue; } dropLoot(e); } enemies = survivors; }
+
+/* ================= LOOT & CRAFT ================= */
+function dropLoot(e){ const base = enemyBase(e.kind); const items=[]; for(const [res,prob] of (base.loot||[])){ if(Math.random()<prob) items.push({type:'res', key:res, qty:1}); }
+  if(e.kind==='stalker' && Math.random()<0.35) items.push({type:'ammo', key:'dart', qty:1});
+  if(e.kind==='spitter' && Math.random()<0.25) items.push({type:'ammo', key:'flare', qty:1});
+  if(e.kind==='bulwark' && Math.random()<0.25) items.push({type:'gear', id:'rebarHelm'});
+  if(e.kind==='howler' && Math.random()<0.15) items.push({type:'gear', id:'bonePlating'});
+  if(e.kind==='warden' && Math.random()<0.20) items.push({type:'gear', id:'resinCoat'});
+  if(items.length){ memory.set(key(e.x,e.y,e.z), {tile:'¤', loot:items}); log('Something useful remains where it fell.'); }
+}
+function gatherLootPile(v){ for(const item of v.loot){
+  if(item.type==='res'){
+    player.resources[item.key] = (player.resources[item.key]||0) + (item.qty||1); log(`[LOOT] +${item.qty||1} ${item.key}`);
+  } else if(item.type==='ammo'){
+    player.inv[item.key] = (player.inv[item.key]||0) + (item.qty||1); log(`[LOOT] +${item.qty||1} ${item.key}`);
+  } else if(item.type==='gear'){
+    autoEquip(item.id);
+  } else if(item.type==='weapon'){
+    // Add procedural weapon to inventory but do NOT auto-equip
+    if(item.id && item.def){ WEAPONS[item.id]=item.def; player.weapons.push(item.id); log(`[LOOT] Weapon added: ${item.def.name} (${item.def.dmg[0]}–${item.def.dmg[1]})`); }
+  }
+ }
+}
+
+function autoEquip(id){ const it=ITEMS[id]; if(!it){ log('[LOOT] Unknown gear.'); return; } const slot=it.slot; if(!player.gear[slot]){ player.gear[slot]=id; log(`[Gear] Equipped ${it.name}.`); } else { log(`[Gear] Already wearing ${ITEMS[player.gear[slot]].name}. Scrapped find into ⊠.`); player.resources.metal+=1; }
+  drawHUD();
+}
+function craftMenuText(){ return '[CRAFT]\n 1) Rebar Helm (head)  — +10% ARM, resist crush  | cost: 2⊠ + 1█\n 2) Resin Coat (torso) — +15% ARM, resist acid   | cost: 2≈ + 1♥\n 3) Bone Plating (torso)— +10% ARM, +3% DODGE, resist psychic | cost: 2♥ + 1⊠\n 4) Bone Darts (×2)     — throwable              | cost: 1♥ + 1⊠\n 5) Stun Flare (×1)     — throwable, AOE stun    | cost: 1≈ + 1⊠ + 1♥\n q) back\n'; }
+function toggleCraft(){ craftOpen=!craftOpen; uiMode=craftOpen?'craft':'world'; const h=document.querySelector('header'); if(craftOpen){ h.className='mode-label'; h.innerHTML=`<div>@ you | recipes | stock</div><div>CRAFTING</div>`; elWorld.classList.add('overlay-mode'); elWorld.textContent=craftMenuText(); } else { restoreHeader(); elWorld.classList.remove('overlay-mode'); renderWorld(); } }
+function handleCraftKey(k){ const r=player.resources; if(k==='q'){ toggleCraft(); return; }
+  if(k==='1'){ if(r.metal>=2 && r.concrete>=1){ r.metal-=2; r.concrete-=1; autoEquip('rebarHelm'); log('[Craft] Rebar Helm forged.'); } else log('Need 2⊠ + 1█.'); }
+  if(k==='2'){ if(r.fabric>=2 && r.organic>=1){ r.fabric-=2; r.organic-=1; autoEquip('resinCoat'); log('[Craft] Resin Coat set.'); } else log('Need 2≈ + 1♥.'); }
+  if(k==='3'){ if(r.organic>=2 && r.metal>=1){ r.organic-=2; r.metal-=1; autoEquip('bonePlating'); log('[Craft] Bone Plating assembled.'); } else log('Need 2♥ + 1⊠.'); }
+  if(k==='4'){ if(r.organic>=1 && r.metal>=1){ r.organic-=1; r.metal-=1; player.inv.dart+=2; log('[Craft] 2× bone darts carved.'); } else log('Need 1♥ + 1⊠.'); }
+  if(k==='5'){ if(r.fabric>=1 && r.metal>=1 && r.organic>=1){ r.fabric-=1; r.metal-=1; r.organic-=1; player.inv.flare+=1; log('[Craft] 1× stun flare cast.'); } else log('Need 1≈ + 1⊠ + 1♥.'); }
+  drawHUD(); elWorld.textContent=craftMenuText(); }
+
+/* ================= NOISE ================= */
+let recentNoises=[];
+function emitNoiseAt(x,y,z, power, description){ recentNoises.push({x,y,z,t:Date.now(),desc:description}); if(recentNoises.length>12) recentNoises.shift(); for(const en of enemies){ if(en.z!==z) continue; const d=distance(x,y,en.x,en.y); if(d<=en.hearing){ en.lastNoise=8; en.state='investigate'; en.target={x,y}; } } if(!player.senses.deaf && distance(player.x,player.y,x,y)<= Math.max(6, 18*player.senses.hearing)){ const dx=x-player.x, dy=y-player.y; const dir = Math.abs(dx)>Math.abs(dy) ? (dx>0?'east':'west') : (dy>0?'south':'north'); log(`[Audio] You hear ${description || 'a scrape'} to the ${dir}.`); } }
+function emitNoiseFromPlayer(base){ const p = Math.max(1, Math.round(base * (player.senses.crouch?0.35:1.0))); emitNoiseAt(player.x,player.y,player.depth,p,'movement'); }
+
+/* ================= RENDERERS (with FoV) ================= */
+function computeVisibleSet(){ const vis = new Set(); const radius = Math.max(3, Math.floor((player.senses.blind?2:12) * player.senses.sight)); for(let j=-radius;j<=radius;j++){ for(let i=0;i<=radius;i++){ } } for(let j=-radius;j<=radius;j++){ for(let i=-radius;i<=radius;i++){ const gx=player.x+i, gy=player.y+j; if(distance(player.x,player.y,gx,gy)<=radius){ if(hasLineOfSight(player.x,player.y,gx,gy,player.depth)){ vis.add(key(gx,gy,player.depth)); } } } } return vis; }
+let visibleNow = new Set();
+function span(cls,ch){ return `<span class="tile ${cls}">${ch}</span>`; }
+function tileClassFor(ch, en){
+  if(en){ const t=en.type||'crush'; return t==='psychic'?'t-enemy-psychic':(t==='acid'?'t-enemy-acid':'t-enemy-crush'); }
+  if(ch==='@') return 't-player';
+  if(ch==='█'||ch==='║'||ch==='╫'||ch==='╬') return 't-wall';
+  if(ch==='░'||ch==='▒'||ch==='▓') return 't-soil';
+  if(ch==='≈') return 't-fluid';
+  if(ch==='▒') return 't-tunnel';
+  if(ch==='▥') return 't-wood';
+  if(ch==='☠') return 't-corpse';
+  if(ch==='♥') return 't-organ';
+  if(ch==='¤') return 't-loot';
+  if(ch==='?') return 't-noise';
+  return 't-empty';
+}
+function renderWorld(){
+  visibleNow = computeVisibleSet();
+  const flicker=(player.depth>20 && Math.random()<0.02);
+  if(tileMode && uiMode==='world'){
+    let out='';
+    for(let j=0;j<VIEW_H;j++){
+      for(let i=0;i<VIEW_W;i++){
+        const gx=player.x+i-Math.floor(VIEW_W/2);
+        const gy=player.y+j-Math.floor(VIEW_H/2);
+        const k=key(gx,gy,player.depth);
+        const isVis = visibleNow.has(k);
+        if(isVis) revealed.add(k);
+        let ch=' ';
+        let en=null;
+        if(isVis){
+          let t = getTile(gx,gy,player.depth);
+          if (typeof t === 'object') t = t.tile;
+          if (flicker && (t===tiles.soil||t===tiles.soil2||t===tiles.soil3)) t = (Math.random()<0.5?tiles.soil2:tiles.soil3);
+          en = isEnemyAt(gx,gy,player.depth);
+          if(en) t = ENEMY_GLYPHS[en.kind] || '?';
+          if (gx===player.x && gy===player.y) t = tiles.player;
+          ch = (t===' ')?'·':(en? '■': t);
+        } else if(recentNoises.length){
+          const hint = recentNoises.find(n=> n.z===player.depth && Date.now()-n.t<1500 && Math.abs(n.x-gx)<=1 && Math.abs(n.y-gy)<=1);
+          if(hint && !player.senses.deaf) ch='?'; else if(revealed.has(k)) ch='·'; else ch=' ';
+        } else { ch = revealed.has(k)?'·':' '; }
+        out += span(tileClassFor(ch,en), ch==='■'?'■':ch);
+      }
+      out += "\n";
+    }
+    elWorld.innerHTML = out;
+  } else {
+    let out='';
+    for(let j=0;j<VIEW_H;j++){
+      for(let i=0;i<VIEW_W;i++){
+        const gx=player.x+i-Math.floor(VIEW_W/2);
+        const gy=player.y+j-Math.floor(VIEW_H/2);
+        const k=key(gx,gy,player.depth);
+        const isVis = visibleNow.has(k);
+        if(isVis) revealed.add(k);
+        let ch=' ';
+        if(isVis){
+          let t = getTile(gx,gy,player.depth);
+          if (typeof t === 'object') t = t.tile;
+          if (flicker && (t===tiles.soil||t===tiles.soil2||t===tiles.soil3)) t = (Math.random()<0.5?tiles.soil2:tiles.soil3);
+          const en = isEnemyAt(gx,gy,player.depth);
+          if(en) t = ENEMY_GLYPHS[en.kind] || '?';
+          if (gx===player.x && gy===player.y) t = tiles.player;
+          ch = t;
+        } else if(recentNoises.length){
+          const hint = recentNoises.find(n=> n.z===player.depth && Date.now()-n.t<1500 && Math.abs(n.x-gx)<=1 && Math.abs(n.y-gy)<=1);
+          if(hint && !player.senses.deaf) ch='?'; else if(revealed.has(k)) ch='·'; else ch=' ';
+        } else { ch = revealed.has(k)?'·':' '; }
+        out += ch;
+      }
+      out += "\n";
+    }
+    elWorld.textContent = out;
+  }
+  elDepth.textContent = player.depth.toFixed(0);
+  const z=getZoneName(player.depth); if(z!==lastZone){ elZone.textContent=z; lastZone=z; }
+  const b=getBiomeRoman(player.x,player.y,player.depth); if(b!==lastBiome){ onBiomeChange(lastBiome,b); lastBiome=b; player.biome=b; elBiome.textContent=b; }
+}
+function renderSideView(){ const bands=[{max:10,sym:'█',name:'Surface'},{max:30,sym:'▓',name:'Sub-Concrete'},{max:60,sym:'≈',name:'Ossuary'},{max:120,sym:'≋',name:'Reservoir'},{max:Infinity,sym:'□',name:'Vault'}]; const scale=2,totalRows=30,half=Math.floor(totalRows/2); const startDepth=Math.max(0, player.depth - half*scale); let out=''; for(let r=0;r<totalRows;r++){ const dHere=startDepth+r*scale; const band=bands.find(b=>dHere<b.max); const marker=(player.depth>=dHere && player.depth<dHere+scale)?'▼':' '; const gutter=(r%5===0)?String(Math.floor(dHere)).padStart(3,' '):'   '; const label=(r%3===0)?(` ${band.sym} ${band.name}`):''; out += `${gutter}m ${marker} ${band.sym.repeat(6)}${label}\n`; } elSide.textContent = out + `\nYou are here: ~${player.depth.toFixed(0)}m`; }
+function drawHUD() {
+  const s = player.stats, r = player.resources;
+  const w = currentWeapon();
+  const arm = Math.round(totalArmor() * 100);
+  const ddg = Math.round(totalDodge() * 100);
+
+  // Vitals
+  elStats.innerHTML =
+    '<h2>Vitals</h2>' +
+    `HP ${Math.round(s.hp)}%   BLOOD ${Math.round(s.blood)}%   O₂ ${Math.round(s.o2)}%\n` +
+    `INF ${Math.round(s.inf)}%   MIND ${Math.round(s.mind)}%   FAT ${Math.round(s.fatigue)}%\n` +
+    `SIGHT ${player.senses.blind?'X':Math.round(player.senses.sight*100)+'%'}   HEAR ${player.senses.deaf?'X':Math.round(player.senses.hearing*100)+'%'}\n` +
+    `ARM ${arm}%   DODGE ${ddg}%` +
+    (player.status.bleeding>0?`\nBLEED ${player.status.bleeding}`:'');
+
+  // Body
+  const headTxt = player.gear.head ? ITEMS[player.gear.head].name : '—';
+  const torsoTxt = player.gear.torso ? ITEMS[player.gear.torso].name : '—';
+  elBody.innerHTML = '<h2>Body</h2>' + `Head: ${headTxt}    Torso: ${torsoTxt}`;
+
+  // Weapons — show ONLY the current weapon
+  elWeapons.innerHTML =
+    '<h2>Weapons</h2>' +
+    `Current: ${w.name}<br>` +
+    `Damage: ${w.dmg[0]}–${w.dmg[1]}<br>` +
+    `Crit: ${(w.crit * 100).toFixed(0)}%  |  Acc: ${(w.acc * 100).toFixed(0)}%` +
+    (w.effect ? `<br>Effect: ${w.effect}` : '');
+
+  // Tools / Resources
+  elTools.innerHTML =
+    '<h2>Equipment</h2>' +
+    `Tools: scalpel / pump / clamp` +
+    `<br>Throwables: darts:${player.inv.dart}   flares:${player.inv.flare}` +
+    `<br>Res: █${r.concrete} ⊠${r.metal} ≈${r.fabric} ♥${r.organic} ▥${r.wood}`;
+}
+
+/* ============== MAP / OVERLAYS / HEADERS ============== */
+function showMapLegend(){ const legend='@ you | ▣ shelter | ▧ cover | ╬ bed | ░ fog | ¤ loot | k crawler | H howler | s stalker | S spitter | B bulwark | m swarm | W warden'; const zone=getZoneName(player.depth).toUpperCase(); const biome=player.biome; const right=`DEPTH ${player.depth.toFixed(0)}m — ${zone}  (BIOME ${biome})  WORLD MAP MODE`; const h=document.querySelector('header'); h.innerHTML=`<div>${legend}</div><div>${right}</div>`; h.className='map-legend'; }
+function showInventoryHeader(){ const h=document.querySelector('header'); h.innerHTML=`<div>@ you | contents | tools</div><div>INVENTORY MODE</div>`; h.className='mode-label'; }
+function showSurgeryHeader(){ const h=document.querySelector('header'); h.innerHTML=`<div>@ you | grafts | vitals</div><div>SURGICAL MODE</div>`; h.className='mode-label'; }
+function showBuildHeader(){ const h=document.querySelector('header'); h.innerHTML=`<div>@ you | structure | decay</div><div>BUILD MODE</div>`; h.className='mode-label'; }
+function restoreHeader(){ const h=document.querySelector('header'); h.className=''; h.innerHTML=`<div>MEAT ON CONCRETE / DEPTH: <span id="depth">${player.depth}</span>m / ZONE: <span id="zone">${getZoneName(player.depth)}</span> (BIOME <span id="biome">${player.biome}</span>)</div><div class="dim">@: you | ♥ organ | ☠ corpse | █ concrete | ░ soil | ≈ fabric | ⊠ metal | ▥ wood | k crawler | H howler | s stalker | S spitter | B bulwark | m swarm | W warden | ¤ loot | ? noise</div>`; }
+function renderMap(){ const MAP_W=200, MAP_H=80; let out=''; for(let j=0;j<MAP_H;j++){ for(let i=0;i<MAP_W;i++){ const gx=player.x+i-Math.floor(MAP_W/2), gy=player.y+j-Math.floor(MAP_H/2); const k=key(gx,gy,player.depth); if(!revealed.has(k)){ out+='░'; continue; } let t=getTile(gx,gy,player.depth); if(typeof t==='object') t=t.tile; if(['▣','▢','☐','∎','▧','▨','▤','╬','¤'].includes(t)) { out+=t; continue; } const en=isEnemyAt(gx,gy,player.depth); if(en){ out+=(ENEMY_GLYPHS[en.kind]||'?'); continue; } if(gx===player.x && gy===player.y){ out+='@'; continue; } out+=t; } out+='\n'; } elWorld.textContent=out; }
+function renderInventory(){
+  const r = player.resources;
+  var header = equipMode ? '[INVENTORY — EQUIP MODE]' : '[INVENTORY]';
+  var lines = [];
+  lines.push(header);
+  lines.push(' TOOLS: scalpel / pump / clamp');
+  lines.push(' RESOURCES: ' + '█' + r.concrete + ' ⊠' + r.metal + ' ≈' + r.fabric + ' ♥' + r.organic + ' ▥' + r.wood);
+  lines.push(' WEAPONS:');
+  var wepLines = [];
+  for (var i=0; i<player.weapons.length; i++){
+    var wId = player.weapons[i];
+    var nm = (WEAPONS[wId] && WEAPONS[wId].name) ? WEAPONS[wId].name : wId;
+    var cursor = (equipMode && i===equipIndex) ? '> ' : '  ';
+    var label = (i===player.wi) ? (cursor + nm + ' [EQUIPPED]') : (cursor + nm);
+    wepLines.push(label);
+  }
+  lines = lines.concat(wepLines);
+  var gearHead = player.gear.head ? ITEMS[player.gear.head].name : '—';
+  var gearTorso = player.gear.torso ? ITEMS[player.gear.torso].name : '—';
+  lines.push(' GEAR:');
+  lines.push(' ' + 'head: ' + gearHead + ' | ' + 'torso: ' + gearTorso);
+  lines.push(' THROWABLES:');
+  lines.push(' ' + 'throwable: ' + player.throwSel + ' | darts:' + player.inv.dart + ' flares:' + player.inv.flare);
+  return lines.join('\n');
+}
+/* ============== INPUT & TOGGLES ============== */
+window.addEventListener('keydown', e => {   const key=e.key;   if(inventoryOpen && equipMode){
+    const k = e.key;
+    if(k==='ArrowUp'){
+      e.preventDefault(); e.stopPropagation();
+      equipIndex = (equipIndex - 1 + player.weapons.length) % player.weapons.length;
+      elWorld.textContent = renderInventory();
+      return;
+    }
+    if(k==='ArrowDown'){
+      e.preventDefault(); e.stopPropagation();
+      equipIndex = (equipIndex + 1) % player.weapons.length;
+      elWorld.textContent = renderInventory();
+      return;
+    }
+    if(k==='e' || k==='E'){
+      e.preventDefault(); e.stopPropagation();
+      equipWeaponByIndex(equipIndex);
+      equipMode = false;
+      elWorld.textContent = renderInventory();
+      drawHUD();
+      return;
+    }
+    if(k==='Escape' || k==='i' || k==='I'){
+      e.preventDefault(); e.stopPropagation();
+      equipMode = false;
+      elWorld.textContent = renderInventory();
+      return;
+    }
+  }  if(e.key==='F5'){ saveGame(); return; }
+  if(e.key==='F9'){ loadGame(); return; }
+  if(throwMode){ if(e.key==='ArrowUp'){ throwCurrent('up'); return; } if(e.key==='ArrowDown'){ throwCurrent('down'); return; } if(e.key==='ArrowLeft'){ throwCurrent('left'); return; } if(e.key==='ArrowRight'){ throwCurrent('right'); return; } if(e.key==='t' || e.key==='T' || e.key==='Escape'){ throwMode=false; log('Throw cancelled.'); return; } return; }
+  if(mapOpen){ if(e.key==='m'){ toggleMap(); } return; }
+  if(inventoryOpen){ if(e.key==='i'){ toggleInventory(); } if(e.key==='e' || e.key==='E'){ if(!equipMode){ e.preventDefault(); e.stopPropagation(); equipMode=true; equipIndex=player.wi; log('[EQUIP MODE] Use ↑↓ then press E to confirm.'); elWorld.textContent=renderInventory(); } return; } return; }
+  if(surgeryOpen){ if(e.key==='s'){ toggleSurgery(); } return; }
+  if(buildOpen){ handleBuildKeys(e.key); return; }
+  if(craftOpen){ handleCraftKey(e.key); return; }
+  if(e.key==='ArrowUp') move(0,-1);
+  else if(e.key==='ArrowDown') move(0,1);
+  else if(e.key==='ArrowLeft') move(-1,0);
+  else if(e.key==='ArrowRight') move(1,0);
+  else if(e.key==='f') playerAttack();
+  else if(e.key==='t') startThrowMode();
+  else if(e.key==='y') cycleThrowable();
+  else if(e.key==='p') padOrBandage();
+  else if(e.key==='o') toggleCraft();
+  else if(e.key===';') toggleTiles();
+  else if(e.key==='d') dig();
+  else if(e.key==='u') ascend();
+  else if(e.key==='x') examine();
+  else if(e.key==='g') gather();
+  else if(e.key==='r') repairStructure();
+  else if(e.key==='q') rest();
+  else if(e.key==='m') toggleMap();
+  else if(e.key==='i') toggleInventory();
+  else if(e.key==='s') toggleSurgery();
+  else if(e.key==='b') toggleBuild();
+  else if(e.key==='c') toggleCrouch();
+});
+
+function toggleTiles(){ tileMode=!tileMode; log(tileMode?'[View] Tiles mode enabled.':'[View] ASCII mode.'); renderWorld(); }
+function toggleCrouch(){ player.senses.crouch=!player.senses.crouch; log(player.senses.crouch?'You lower yourself, minimizing profile.':'You stand, breath louder.'); drawHUD(); }
+function toggleMap(){ mapOpen=!mapOpen; uiMode=mapOpen?'map':'world'; if(mapOpen){ showMapLegend(); elWorld.classList.add('overlay-mode','map-mode'); renderMap(); log('The map unfurls like tissue memory.'); } else { restoreHeader(); elWorld.classList.remove('overlay-mode','map-mode'); renderWorld(); log('Concrete closes over the grid.'); } }
+function toggleInventory(){ inventoryOpen=!inventoryOpen; uiMode=inventoryOpen?'inventory':'world'; if(inventoryOpen){ equipMode=false; equipIndex=player.wi; showInventoryHeader(); elWorld.classList.add('overlay-mode'); elWorld.textContent=renderInventory(); log('You examine your possessions. The light hums.'); } else { equipMode=false; showInventoryHeader(); restoreHeader(); elWorld.classList.remove('overlay-mode'); renderWorld(); log('You lower your hands from the inventory screen.'); } }
+function toggleSurgery(){ surgeryOpen=!surgeryOpen; uiMode=surgeryOpen?'surgery':'world'; if(surgeryOpen){ showSurgeryHeader(); elWorld.classList.add('overlay-mode'); elWorld.textContent='[SURGERY]\n Graft tolerances TBD.'; } else { restoreHeader(); elWorld.classList.remove('overlay-mode'); renderWorld(); } }
+function toggleBuild(){ buildOpen=!buildOpen; uiMode=buildOpen?'build':'world'; if(buildOpen){ showBuildHeader(); elWorld.classList.add('overlay-mode'); elWorld.textContent='[BUILD]\n 1) Shelter ▣ (4█+2⊠)\n 2) Cover ▧ (2█)\n 3) Bed ╬ (2⊠+1≈+1▥)\n q) back'; } else { restoreHeader(); elWorld.classList.remove('overlay-mode'); renderWorld(); } }
+
+/* ============== REST ============== */
+function rest(){
+  const s = player.stats;
+  if (s.fatigue <= 0 && s.hp >= 98 && s.o2 >= 98) { log('You steady yourself, but gain nothing.'); return; }
+  const turns = 3;
+  for (let i=0;i<turns;i++){
+    s.fatigue = Math.max(0, s.fatigue - 6);
+    s.o2 = Math.min(100, s.o2 + 2);
+    if (s.hp < 100 && player.status.bleeding===0) s.hp = Math.min(100, s.hp + 1);
+    if (player.status.bleeding>0 && Math.random()<0.25) { player.status.bleeding = Math.max(0, player.status.bleeding-1); }
+    for(const e of enemies){ enemyAct(e); if(e.lastNoise>0) e.lastNoise--; }
+    bleedTick();
+  }
+  log('You take a moment. The concrete hum steadies.');
+  drawHUD(); renderWorld();
+}
+
+/* ============== MOVEMENT / DIG / TUNNEL ============== */
+/* === SAFE SPAWN HELPERS === */
+function passableAt(x,y,z){ return !solidAt(getTile(x,y,z)); }
+function openNeighborExists(x,y,z){
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+  for(const [dx,dy] of dirs){ if(passableAt(x+dx,y+dy,z)) return true; }
+  return false;
+}
+function ensureSafeSpawn(){
+  const z=player.depth;
+  let sx=player.x, sy=player.y;
+  // If already safe, keep as-is
+  if(passableAt(sx,sy,z) && openNeighborExists(sx,sy,z)) return;
+  // Spiral search outward for the nearest safe tile with at least one open neighbor
+  for(let r=1;r<=60;r++){
+    for(let dy=-r; dy<=r; dy++){
+      for(let dx=-r; dx<=r; dx++){
+        if(Math.abs(dx)!==r && Math.abs(dy)!==r) continue; // perimeter only
+        const cx=sx+dx, cy=sy+dy;
+        if(passableAt(cx,cy,z) && openNeighborExists(cx,cy,z)){
+          player.x=cx; player.y=cy;
+          log('[Spawn] You find a cracked seam in the concrete.');
+          return;
+        }
+      }
+    }
+  }
+  // Fallback: carve a 3×3 pocket if no open space found nearby
+  for(let oy=-1; oy<=1; oy++){ for(let ox=-1; ox<=1; ox++){ tunnelize(sx+ox, sy+oy, z); } }
+  log('[Spawn] You force a pocket in the slab.');
+}
+
+function solidAt(t){ if(typeof t==='object') t=t.tile; return [tiles.wall, tiles.soil, tiles.soil2, tiles.soil3, tiles.fluid].includes(t) || beamGlyphs.includes(t); }
+function tunnelize(x,y,z){ setTile(x,y,z, tiles.tunnel); }
+function afterPlayerAction(noise){ if(noise>0) emitNoiseFromPlayer(noise); bleedTick(); for(const e of enemies){ enemyAct(e); if(e.lastNoise>0) e.lastNoise--; } resolveEnemyDeaths(); spawnEnemyNearPlayer(); }
+function move(dx,dy){ const tx=player.x+dx, ty=player.y+dy; let t=getTile(tx,ty,player.depth); if (solidAt(t)) { if (player.depth <= 0) { log('Surface concrete is immovable.'); return; } const k=key(tx,ty,player.depth); let val = memory.get(k); if(!val || typeof val!=='object' || !val.solid){ val = {tile: (typeof t==='object'?t.tile:t), solid:true, damage:0, stageGlyph:'*'}; } const baseRes = 3; let digPower = 1; digPower += player.body.extra.arms*0.5 + player.body.extra.legs*0.2; val.damage += digPower; val.stageGlyph = ['·','+','#'][Math.min(2, Math.floor(val.damage))] || '#'; memory.set(k,val); player.stats.fatigue = Math.min(100, player.stats.fatigue + 0.8); player.stats.o2 = Math.max(0, player.stats.o2 - 0.15); if(val.damage >= baseRes){ tunnelize(tx,ty,player.depth); log('The wall yields. Dust blooms.'); player.x=tx; player.y=ty; afterPlayerAction(9); renderWorld(); return; } drawHUD(); renderWorld(); return; } player.x=tx; player.y=ty; player.stats.fatigue = Math.min(100, player.stats.fatigue + 0.05); player.stats.o2 = Math.max(0, player.stats.o2 - 0.03); afterPlayerAction(4); renderWorld(); renderSideView(); drawHUD();
+// Seed a couple of caches nearby
+for(let i=0;i<2;i++){ const rr=10+Math.floor(Math.random()*10); const aa=Math.random()*Math.PI*2; const sx=player.x+Math.round(Math.cos(aa)*rr); const sy=player.y+Math.round(Math.sin(aa)*rr); spawnProcWeaponAt(sx,sy,player.depth); } }
+function dig(){ const prev=player.depth; player.depth+=1; onDepthChange(prev, player.depth); afterPlayerAction(7); renderWorld(); renderSideView(); drawHUD(); log('You descend through ash and organs...'); }
+function ascend(){ if(player.depth<=0){ log('Surface pressure holds you here.'); return; } const prev=player.depth; player.depth-=1; onDepthChange(prev, player.depth); afterPlayerAction(3); renderWorld(); renderSideView(); drawHUD(); log('You climb towards thinner air.'); }
+
+/* ============== EXAMINE / GATHER ============== */
+function examine(){ const t=getTile(player.x,player.y,player.depth); const disp=(typeof t==='object')?t.tile:t; if(beamGlyphs.includes(disp)){ log('[EXAMINE] A preserved beam.'); afterPlayerAction(1); return; } if(disp===tiles.corpse){ log('[EXAMINE] A body, partially preserved.'); afterPlayerAction(1); return; } if(disp===tiles.organ){ log('[EXAMINE] A loose organ.'); afterPlayerAction(1); return; } if(disp===tiles.wall){ log('[EXAMINE] Reinforced concrete.'); afterPlayerAction(1); return; } if(['▣','▢','☐','∎','▧','▨','▤','╬','¤'].includes(disp)){ const v=memory.get(key(player.x,player.y,player.depth)); if(disp==='¤' && v && Array.isArray(v.loot)){ log(`[LOOT] Cache detected: ${v.loot.length} item(s). Press g to take.`); afterPlayerAction(0); return; } log('[EXAMINE] Structure or cache.'); afterPlayerAction(0); return; } log('[EXAMINE] Nothing of use.'); afterPlayerAction(0); }
+function gather(){ const k=key(player.x,player.y,player.depth); let t=getTile(player.x,player.y,player.depth); let disp=(typeof t==='object')?t.tile:t; const s=player.stats; if(s.fatigue>=100){ log('Too exhausted to gather.'); return; } const v=memory.get(k); if(v && typeof v==='object' && v.tile==='¤' && Array.isArray(v.loot)){ gatherLootPile(v); memory.delete(k); setTile(player.x,player.y,player.depth,tiles.tunnel); renderWorld(); drawHUD(); afterPlayerAction(2); return; } if(beamGlyphs.includes(disp)){ const gained = 1 + Math.floor(Math.random()*2); player.resources.wood += gained; s.fatigue = Math.min(100, s.fatigue+0.5); log(`[GATHER] Timber splinters (+${gained} ▥)`); setTile(player.x,player.y,player.depth, Math.random()<0.5?tiles.soil:tiles.tunnel); drawHUD(); renderWorld(); afterPlayerAction(6); return; } if(disp===tiles.wall){ const got = 1 + Math.floor(Math.random()*3); player.resources.concrete += got; s.fatigue=Math.min(100,s.fatigue+0.5); log(`[GATHER] Concrete shards (+${got} █)`); drawHUD(); afterPlayerAction(6); return; } if(disp==='⊠'){ player.resources.metal += 1; s.fatigue=Math.min(100,s.fatigue+0.5); log('[GATHER] Metal fragments (+1 ⊠)'); setTile(player.x,player.y,player.depth,tiles.tunnel); renderWorld(); drawHUD(); afterPlayerAction(6); return; } if(disp===tiles.soil || disp===tiles.soil2){ if(Math.random()<0.25){ player.resources.fabric += 1; log('[GATHER] Fibrous scrap (+1 ≈)'); } else { log('[GATHER] The material disintegrates.'); } s.fatigue=Math.min(100,s.fatigue+0.3); drawHUD(); afterPlayerAction(4); return; } if(disp===tiles.corpse){ const roll=Math.random(); if(roll<0.34){ player.resources.metal+=1; log('[GATHER] Fasteners (+1 ⊠)'); } else if(roll<0.67){ player.resources.organic+=1; log('[GATHER] Tissue (+1 ♥)'); } else { player.resources.fabric+=1; log('[GATHER] Cloth (+1 ≈)'); } s.fatigue=Math.min(100,s.fatigue+0.6); drawHUD(); afterPlayerAction(5); return; } if(disp===tiles.organ){ player.resources.organic += 1; setTile(player.x,player.y,player.depth,tiles.tunnel); log('[GATHER] The organ hums once, then stills. (+1 ♥)'); renderWorld(); drawHUD(); afterPlayerAction(5); return; } if(disp===tiles.woodFrag){ player.resources.wood += 1; setTile(player.x,player.y,player.depth,tiles.tunnel); log('[GATHER] Splinters recovered. (+1 ▥)'); renderWorld(); drawHUD(); afterPlayerAction(4); return; } log('No usable material here.'); afterPlayerAction(0); }
+
+/* ============== ARTEFACTS & FRAGMENTS ============== */
+function fragmentLibrary(zone, biome){ const fragments={ 'Surface':[ '“Report: perimeter intact.”','“Air sample: trace alkali dust.”','“Surface is a rumour.”' ], 'Sub-Concrete':[ '“Design Note: Rebar must breathe with the concrete.”','“Blueprint fragment: corridor to nowhere.”','“Instruction 14: Continue despite resistance.”' ], 'Ossuary':[ '“You are entitled to one additional limb.”','“Catalogue entry: femur, unnumbered.”','“The organs will remember what the body forgot.”' ], 'Reservoir':[ '“Maintenance log 47: Pressure irregularities persist.”','“Fluid sample labelled ‘conscious’.”','“Report: containment breach at depth 93m — sealed.”' ], 'Vault':[ '“Directive 0: Observe silence.”','“Invoice — 12 lungs, returned unopened.”','“Inventory complete. Nothing remains.”' ] }; const adjectives={ 'I':'sterile','II':'calcified','III':'residual','IV':'circulatory','V':'organic' }; const base=fragments[zone]||[]; const adj=adjectives[biome]||'neutral'; return base.concat([ `“Annotation: specimen state — ${adj}.”`, `“Note: structure integrity ${adj}.”` ]); }
+function revealArtefact(x,y,z){ const roll=Math.random(); const zone=getZoneName(player.depth); const biome=player.biome; if(roll<0.4){ const lines=fragmentLibrary(zone,biome); const line=lines[Math.floor(Math.random()*lines.length)]; log(`[FRAGMENT] ${line}`); } else { const branch=Math.random(); if(branch<0.25){ player.resources.metal+=1; log('[ARTEFACT] A corroded tag stamped “74–F7”. (+1 ⊠)'); } else if(branch<0.5){ player.resources.fabric+=1; log('[ARTEFACT] Patterned fabric, brittle but intact. (+1 ≈)'); } else if(branch<0.75){ player.resources.organic+=1; log('[ARTEFACT] Desiccated residue clings. (+1 ♥)'); } else { player.resources.wood+=1; log('[ARTEFACT] A shaped haft, fossilised. (+1 ▥)'); } drawHUD(); } }
+
+/* ============== REPAIR / BUILD / DECAY / SAVE ============== */
+function effectiveSkill(){ const ex=player.body.extra; const mod=(ex.arms+ex.legs+ex.lungs+ex.kidneys+ex.hearts+ex.eyes)*0.05; return Math.min(1, player.innate + mod); }
+function repairFailureChance(){ return Math.max(0.05, 0.25 * (1 - effectiveSkill())); }
+function updateShelterGlyph(val){ const d=Math.round(val.durability); if(d>=5) val.tile='▣'; else if(d===4) val.tile='▢'; else if(d===3) val.tile='☐'; else if(d<=2) val.tile='∎'; }
+function updateCoverGlyph(val){ const d=Math.round(val.durability); if(d>=3) val.tile='▧'; else if(d===2) val.tile='▨'; else if(d===1) val.tile='▤'; }
+function maxDurability(tile){ if(['▣','▢','☐','∎'].includes(tile)) return 5; if(['▧','▨','▤'].includes(tile)) return 3; if(tile==='╬') return 5; return 5; }
+function repairStructure(){ const k=key(player.x,player.y,player.depth); const val=memory.get(k); const s=player.stats; if(!val || typeof val!=='object' || !val.tile){ log('No structure here to repair.'); return; } const md=maxDurability(val.tile); if(val.durability>=md){ log('This structure is intact.'); return; } if(s.fatigue>80){ log('You are too exhausted to work.'); return; } if(player.resources.organic<=0){ log('You need organic tissue (♥) to bind repairs.'); return; } const failed = Math.random() < repairFailureChance(); player.resources.organic -= 1; if(failed){ val.durability = Math.max(0, val.durability - 1); log('The graft rejects. Integrity slips.'); if(val.durability<=0){ setTile(player.x,player.y,player.depth,tiles.soil); log('The structure collapses into fragments.'); } } else { const restore = 1 + Math.floor(Math.random()*2); val.durability = Math.min(md, val.durability + restore); log(`Integrity restored (${Math.round(val.durability)}/${md}).`); if(['▣','▢','☐','∎'].includes(val.tile)) updateShelterGlyph(val); if(['▧','▨','▤'].includes(val.tile)) updateCoverGlyph(val); } drawHUD(); renderWorld(); afterPlayerAction(2); }
+function handleBuildKeys(k){ if(k==='q'){ toggleBuild(); return; } if(!['1','2','3'].includes(k)) return; const r=player.resources; const cx=player.x, cy=player.y, cz=player.depth; const here=getTile(cx,cy,cz); if(here!==tiles.empty && here!==tiles.tunnel){ log('Space obstructed.'); return; } if(k==='1'){ if(r.concrete>=4 && r.metal>=2){ r.concrete-=4; r.metal-=2; memory.set(key(cx,cy,cz), {tile:'▣',durability:5}); log('[BUILD] Shelter assembled.'); } else log('Insufficient materials for Shelter.'); } if(k==='2'){ if(r.concrete>=2){ r.concrete-=2; memory.set(key(cx,cy,cz), {tile:'▧',durability:3}); log('[BUILD] Cover lashed together.'); } else log('Insufficient materials for Cover.'); } if(k==='3'){ if(r.metal>=2 && r.fabric>=1 && r.wood>=1){ r.metal-=2; r.fabric-=1; r.wood-=1; memory.set(key(cx,cy,cz), {tile:'╬',durability:5}); log('[BUILD] Bed anchored to the floor.'); } else log('Insufficient materials for Bed.'); } drawHUD(); renderWorld(); elWorld.textContent='[BUILD]\n 1) Shelter ▣ (4█+2⊠)\n 2) Cover ▧ (2█)\n 3) Bed ╬ (2⊠+1≈+1▥)\n q) back'; afterPlayerAction(2); }
+setInterval(()=>{ for(const [k,v] of memory){ if(typeof v==='object'){ if(['▣','▢','☐','∎'].includes(v.tile)){ if(Math.random()<0.001){ v.durability--; if(v.durability<=0){ memory.set(k, tiles.soil); log('Somewhere, a shelter crumbles into powder.'); } else updateShelterGlyph(v); } } else if(['▧','▨','▤'].includes(v.tile)){ if(Math.random()<0.0015){ v.durability--; if(v.durability<=0){ memory.set(k, tiles.soil); log('A fragment of cover collapses into dust.'); } else updateCoverGlyph(v); } } else if(v.tile==='╬'){ if(Math.random()<0.001){ v.durability--; if(v.durability<=0){ memory.set(k, tiles.soil); log('A bed gives a distant metallic sigh and falls in.'); } } } } } if(uiMode==='world') spawnEnemyNearPlayer(); }, 15000);
+function saveGame(){ const data={ player, memory:Array.from(memory.entries()), revealed:Array.from(revealed), uiMode, enemies }; localStorage.setItem('concreteMeatSave', JSON.stringify(data)); log('[SAVE] State preserved in concrete memory.'); }
+function loadGame(){ const raw=localStorage.getItem('concreteMeatSave'); if(!raw){ log('[LOAD] No previous record found.'); return; } const data=JSON.parse(raw); Object.assign(player, data.player); memory.clear(); for(const [k,v] of data.memory) memory.set(k,v); revealed.clear(); for(const k of data.revealed) revealed.add(k); enemies = Array.isArray(data.enemies)?data.enemies:[]; uiMode=data.uiMode||'world'; if(uiMode==='map'){ showMapLegend(); elWorld.classList.add('overlay-mode','map-mode'); renderMap(); } else if(uiMode==='inventory'){ showInventoryHeader(); elWorld.classList.add('overlay-mode'); elWorld.textContent=renderInventory(); } else if(uiMode==='surgery'){ showSurgeryHeader(); elWorld.classList.add('overlay-mode'); elWorld.textContent='[SURGERY]\n Graft tolerances TBD.'; } else if(uiMode==='build'){ showBuildHeader(); elWorld.classList.add('overlay-mode'); elWorld.textContent='[BUILD]\n 1) Shelter ▣ (4█+2⊠)\n 2) Cover ▧ (2█)\n 3) Bed ╬ (2⊠+1≈+1▥)\n q) back'; } else if(uiMode==='craft'){ toggleCraft(); } else { restoreHeader(); elWorld.classList.remove('overlay-mode','map-mode'); renderWorld(); } log(`[LOAD] World reconstituted at depth ${player.depth}m — ${uiMode.toUpperCase()} view active.`); drawHUD(); renderSideView(); }
+
+/* ============== INIT ============== */
+const __probe=document.createElement('span');
+__probe.textContent='█'; __probe.style.visibility='hidden'; __probe.style.position='absolute'; __probe.style.whiteSpace='pre'; __probe.style.fontFamily=getComputedStyle(elWorld).fontFamily; document.body.appendChild(__probe);
+function __charMetrics(px){ __probe.style.fontSize=px+'px'; __probe.style.lineHeight='1'; const r=__probe.getBoundingClientRect(); return {w:r.width,h:r.height}; }
+const __BASE=14;
+function fitWorld(){ const r=elWorld.getBoundingClientRect(); const m=__charMetrics(__BASE); const scaleW=r.width/(VIEW_W*m.w); const scaleH=r.height/(VIEW_H*m.h); const px=Math.max(9, Math.floor(Math.min(scaleW,scaleH)*__BASE)); elWorld.style.fontSize=px+'px'; elWorld.style.lineHeight='1'; }
+window.addEventListener('resize', fitWorld);
+function init(){ ensureSafeSpawn(); drawHUD(); renderWorld(); renderSideView(); fitWorld(); log('The hum of subterranean lights follows you down.'); setTimeout(spawnEnemyNearPlayer, 3000); }
+init();
+
+// Prevent page scrolling with arrow keys and space
+window.addEventListener('keydown', function(e) {
+  const keys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '];
+  if (keys.includes(e.key)) {
+    e.preventDefault();
+  }
+}, { passive: false });
+
+</script>
+</body>
+</html>

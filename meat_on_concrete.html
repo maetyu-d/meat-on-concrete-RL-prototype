@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>MEAT ON CONCRETE — Full Build (Expanded UI + Tiles Mode)</title>
+<title>MEAT ON CONCRETE</title>
 <style>
 :root { --bg:#0b0b0b; --fg:#e6e6e6; --dim:#8a8a8a; --mono:ui-monospace,Menlo,Monaco,Consolas,"Courier New",monospace; }
 html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:var(--mono)}
@@ -224,7 +224,7 @@ player.throwSel = 'shard';
 let throwMode=false;
 let equipMode=false;
 let equipIndex=0;
-let tileMode=false; // NEW: tiles rendering toggle
+let tileMode=false; // tiles rendering toggle
 
 /* Weapons */
 const WEAPONS = {
@@ -264,7 +264,7 @@ function spawnProcWeaponAt(x,y,z){
   memory.set(k, {tile:'¤', loot:[{type:'weapon', id, def}]});
   return true;
 }
-// Occasionally sprinkle a weapon near the player
+// Occasionally drop a weapon near the player
 function spawnWorldWeaponOccasionally(){
   if(Math.random()<0.015) return; // most ticks: do nothing
   if(Math.random()<0.006){
@@ -281,7 +281,7 @@ player.wi=0;
 function currentWeapon(){ return WEAPONS[player.weapons[player.wi]]; }
 function equipWeaponByIndex(idx){ if(idx<0||idx>=player.weapons.length) return; player.wi=idx; const w=WEAPONS[player.weapons[idx]]; log(`Equipped ${w.name||player.weapons[idx]}`); drawHUD(); }
 
-/* Gear Catalog */
+/* Gear Catalogue */
 const ITEMS = {
   rebarHelm:{name:'Rebar Helm', slot:'head', armor:0.10, dodge:0.00, resist:{crush:0.10}},
   resinCoat:{name:'Resin Coat', slot:'torso', armor:0.15, dodge:0.00, resist:{acid:0.25}},

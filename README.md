@@ -1,1 +1,1 @@
-!(/https://github.com/maetyu-d/meat-on-concrete-RL-prototype/blob/main/Screenshot%202025-12-07%20at%2021.11.02.png?raw=true)
+!(/https://github.com/maetyu-d/meat-on-concrete-RL-prototype/blob/main/Screenshot%202025-12-07%20at%2021.11.02.png)
